@@ -5,8 +5,8 @@
 import os.path
 from utils import try_block
 
-from PyQt5.QtCore import Qt, QRectF, QPoint, QPointF, pyqtSignal, QEvent, QSize
-from PyQt5.QtGui import QImage, QPixmap, QPainterPath, QMouseEvent, QPainter, QPen
+from PyQt5.QtCore import Qt, QRectF, QSizeF, QPoint, QPointF, pyqtSignal, QEvent, QSize
+from PyQt5.QtGui import QImage, QPixmap, QPainterPath, QMouseEvent, QPainter, QPen, QBrush, QColor
 from PyQt5.QtWidgets import QGraphicsView, QGraphicsScene, QFileDialog, QSizePolicy, \
     QGraphicsItem, QGraphicsEllipseItem, QGraphicsRectItem, QGraphicsLineItem, QGraphicsPolygonItem
 
@@ -57,6 +57,10 @@ class QtImageViewer(QGraphicsView):
     TODO: Add support for editing the displayed image contrast.
     TODO: Add support for drawing ROIs with the mouse.
     """
+
+    ZOOM_TOLERANCE = 25
+    MESH_STARTING_POINT = (224-50)//2
+    MESH_SIZE = 50
 
     # Mouse button signals emit image scene (x, y) coordinates.
     # !!! For image (row, column) matrix indexing, row = y and column = x.
@@ -216,6 +220,7 @@ class QtImageViewer(QGraphicsView):
         if len(filepath) and os.path.isfile(filepath):
             image = QImage(filepath)
             self.setImage(image)
+            self.draw_mesh()
 
     def updateViewer(self):
         """ Show current zoom (if showing entire image, apply current aspect ratio mode).
@@ -244,6 +249,7 @@ class QtImageViewer(QGraphicsView):
         """ Start mouse pan or zoom mode.
         """
         # Ignore dummy events. e.g., Faking pan with left button ScrollHandDrag.
+        print('mousePressEvent')
         dummyModifiers = Qt.KeyboardModifier(Qt.ShiftModifier | Qt.ControlModifier
                                              | Qt.AltModifier | Qt.MetaModifier)
         if event.modifiers() == dummyModifiers:
@@ -309,6 +315,7 @@ class QtImageViewer(QGraphicsView):
         scenePos = self.mapToScene(event.pos())
         if event.button() == Qt.LeftButton:
             self.leftMouseButtonPressed.emit(scenePos.x(), scenePos.y())
+
         elif event.button() == Qt.MiddleButton:
             self.middleMouseButtonPressed.emit(scenePos.x(), scenePos.y())
         elif event.button() == Qt.RightButton:
@@ -338,7 +345,7 @@ class QtImageViewer(QGraphicsView):
             # If zoom box is 3x3 screen pixels or smaller, do not zoom and proceed to process as a click release.
             zoomPixelWidth = abs(event.pos().x() - self._pixelPosition.x())
             zoomPixelHeight = abs(event.pos().y() - self._pixelPosition.y())
-            if zoomPixelWidth > 3 and zoomPixelHeight > 3:
+            if zoomPixelWidth > self.ZOOM_TOLERANCE and zoomPixelHeight > self.ZOOM_TOLERANCE:
                 if zoomRect.isValid() and (zoomRect != self.sceneRect()):
                     self.zoomStack.append(zoomRect)
                     self.updateViewer()
@@ -346,6 +353,21 @@ class QtImageViewer(QGraphicsView):
                     event.accept()
                     self._isZooming = False
                     return
+
+            else:
+                pen = QPen(QColor(121,252,50,50))
+                brush = QBrush(QColor(121,252,50,50))
+                side = self.MESH_SIZE
+                #
+                p = self.mapToScene(event.pos())
+
+                items = self.scene.items()
+                for i in items:
+                    print(i)
+
+                r = QRectF(p,
+                                  QSizeF(side, side))
+                self.scene.addRect(r, pen, brush)
 
         # Finish panning?
         if (self.panButton is not None) and (event.button() == self.panButton):
@@ -515,6 +537,17 @@ class QtImageViewer(QGraphicsView):
             spot.setRect(x - radius, y - radius, 2 * radius, 2 * radius)
             self.scene.addItem(spot)
             self.ROIs.append(spot)
+
+    def draw_mesh(self):
+        pen = QPen(Qt.white)
+        side = self.MESH_SIZE
+
+        for i in range(20):
+            for j in range(20):
+                r = QRectF(QPointF(self.MESH_STARTING_POINT + i * side,
+                                   self.MESH_STARTING_POINT + j * side),
+                           QSizeF(side, side))
+                self.scene.addRect(r, pen)
 
 
 class EllipseROI(QGraphicsEllipseItem):
